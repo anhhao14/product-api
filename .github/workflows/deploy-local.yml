@@ -1,0 +1,44 @@
+name: Deploy Local
+
+on:
+  # Tự chạy SAU KHI Docker Publish (CD) kết thúc trên main
+  workflow_run:
+    workflows: ["Docker Publish (CD)"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    # Chỉ deploy khi CD THÀNH CÔNG
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    # Chạy trên laptop của bạn, KHÔNG phải máy ảo GitHub
+    runs-on: [self-hosted, local]
+
+    defaults:
+      run:
+        shell: powershell
+
+    steps:
+      - name: Lấy docker-compose-prod.yaml
+        uses: actions/checkout@v5
+
+      - name: Kéo image mới nhất từ Docker Hub
+        run: docker compose -f docker-compose-prod.yaml pull
+
+      - name: Khởi động lại và chờ healthcheck
+        run: docker compose -f docker-compose-prod.yaml up -d --wait --wait-timeout 120
+
+      - name: Trạng thái container
+        run: docker compose -f docker-compose-prod.yaml ps
+
+      - name: Kiểm tra API sau deploy
+        run: |
+          $res = Invoke-RestMethod http://localhost:3000/health
+          $res | ConvertTo-Json
+          if ($res.status -ne 'ok') { Write-Error "API không khỏe"; exit 1 }
+          docker image inspect haohtttk18/product-api:latest --format "{{index .RepoDigests 0}}"
+          Write-Output "✅ Deploy local thành công"
+
+      - name: Dọn image cũ không còn dùng
+        run: docker image prune -f
