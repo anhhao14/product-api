@@ -1,0 +1,38 @@
+name: Test Product CI
+
+# Khi nào chạy: push hoặc tạo pull request vào nhánh main, hoặc bấm chạy tay
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v5
+
+      - name: Cài Node.js 22
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Cài thư viện
+        run: npm ci
+
+      - name: Kiểm tra cú pháp các file JS
+        run: |
+          for f in $(find src -name "*.js"); do
+            node --check "$f" && echo "OK: $f"
+          done
+
+      - name: Kiểm tra ứng dụng nạp được
+        run: node -e "require('./src/app'); console.log('✅ App loaded OK')"
+
+      - name: Kiểm tra build Docker image
+        run: docker build -t product-api:ci .
