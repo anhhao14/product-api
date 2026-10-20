@@ -1,0 +1,59 @@
+name: Docker Publish (CD)
+
+on:
+  # Tự chạy SAU KHI workflow CI Prod kết thúc trên nhánh main
+  workflow_run:
+    workflows: ["Test Product CI (Prod)"]
+    types: [completed]
+    branches: [main]
+  # Cho phép bấm chạy tay
+  workflow_dispatch:
+
+jobs:
+  build-push:
+    # Chỉ chạy khi CI Prod THÀNH CÔNG (hoặc khi bấm chạy tay)
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+
+    env:
+      IMAGE: ${{ vars.DOCKERHUB_USERNAME }}/product-api
+      # Dùng đúng commit mà CI đã test
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+
+    steps:
+      - name: Lấy đúng commit đã qua CI
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+
+      - name: Build image
+        run: docker build -t product-api:1.0 .
+
+      - name: Healthcheck chính image sắp push
+        run: |
+          docker compose up -d --no-build --wait --wait-timeout 120
+          docker compose ps
+          curl -fsS http://localhost:3000/health
+
+      - name: In log khi lỗi
+        if: failure()
+        run: docker compose logs
+
+      - name: Đăng nhập Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Gắn tag và push lên Docker Hub
+        run: |
+          SHORT=${SHA::7}
+          docker tag product-api:1.0 $IMAGE:latest
+          docker tag product-api:1.0 $IMAGE:$SHORT
+          docker push $IMAGE:latest
+          docker push $IMAGE:$SHORT
+          echo "✅ Đã push $IMAGE:latest và $IMAGE:$SHORT"
+
+      - name: Dọn dẹp
+        if: always()
+        run: docker compose down -v
