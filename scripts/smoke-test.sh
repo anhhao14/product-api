@@ -26,3 +26,4 @@ check 400 -X PUT $BASE/products/CI001 -H "$J" -d '{"price":"abc"}'
 check 200 -X DELETE $BASE/products/CI001
 check 404 $BASE/products/CI001
 echo "PASS: tat ca test CRUD thanh cong"
+check 404 -X DELETE $BASE/products/KHONGCO
